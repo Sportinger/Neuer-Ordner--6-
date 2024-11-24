@@ -7,7 +7,7 @@ import random
 
 # Parameters
 layer_count = 9  # Default number of layers (should be an odd number for symmetry)
-outline_thickness = 2  # Thickness of the white outlines
+outline_thickness = 2  # Thickness of the white outlines (will be adjusted based on window size)
 
 # Camera parameters
 camera_distance = layer_count * 4  # Initial distance from the center
@@ -20,11 +20,14 @@ viewport = (800, 600)  # Initial window size
 
 # GUI elements
 button_rect = pygame.Rect(10, 10, 120, 30)  # Position and size of the randomize button
-input_rect = pygame.Rect(140, 10, 120, 30)  # Position and size of the layers input box
-slider_rect = pygame.Rect(270, 20, 200, 10)  # Position and size of the randomization slider
+random_slider_rect = pygame.Rect(10, 50, 200, 20)  # Position and size of the randomization slider
+layer_slider_rect = pygame.Rect(10, 80, 200, 20)    # Position and size of the layers slider
 
 # Randomization intensity (0 to 1)
 random_intensity = 0.5  # Default intensity
+
+# Layers slider value
+layer_slider_value = 9  # Default layer count
 
 # Initialize Pygame and OpenGL
 def init():
@@ -203,7 +206,7 @@ def draw_vbo(vertex_vbo, vertex_count, edge_vbo, edge_count):
     glBindBuffer(GL_ARRAY_BUFFER, 0)
 
 # Draw the on-screen GUI elements using OpenGL
-def draw_gui(input_text):
+def draw_gui():
     # Switch to orthographic projection
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
@@ -221,20 +224,26 @@ def draw_gui(input_text):
     draw_rect_outline(button_rect, (0.0, 0.0, 0.0))  # Black border
     draw_text('Randomize', button_rect.centerx, button_rect.centery, (0, 0, 0))
 
-    # Draw Layers Input Box
-    draw_rect(input_rect, (1.0, 1.0, 1.0))  # White background
-    draw_rect_outline(input_rect, (0.0, 0.0, 0.0))  # Black border
-    draw_text('Layers: ' + input_text, input_rect.left + 5, input_rect.centery, (0, 0, 0), align='left')
-
     # Draw Randomization Slider
-    draw_rect(slider_rect, (0.8, 0.8, 0.8))  # Gray background
-    draw_rect_outline(slider_rect, (0.0, 0.0, 0.0))  # Black border
+    draw_rect(random_slider_rect, (0.8, 0.8, 0.8))  # Gray background
+    draw_rect_outline(random_slider_rect, (0.0, 0.0, 0.0))  # Black border
     # Slider handle position
-    handle_x = slider_rect.x + int(random_intensity * slider_rect.width)
-    handle_rect = pygame.Rect(handle_x - 5, slider_rect.y - 5, 10, slider_rect.height + 10)
+    handle_x = random_slider_rect.x + int(random_intensity * random_slider_rect.width)
+    handle_rect = pygame.Rect(handle_x - 5, random_slider_rect.y - 5, 10, random_slider_rect.height + 10)
     draw_rect(handle_rect, (0.6, 0.6, 0.6))  # Darker gray handle
     draw_rect_outline(handle_rect, (0.0, 0.0, 0.0))  # Black border
-    draw_text('Randomness', slider_rect.left, slider_rect.top - 10, (0, 0, 0), align='left')
+    draw_text('Randomness', random_slider_rect.left, random_slider_rect.top - 10, (0, 0, 0), align='left')
+
+    # Draw Layers Slider
+    draw_rect(layer_slider_rect, (0.8, 0.8, 0.8))  # Gray background
+    draw_rect_outline(layer_slider_rect, (0.0, 0.0, 0.0))  # Black border
+    # Slider handle position
+    layer_slider_normalized = (layer_slider_value - 3) / (21 - 3)  # Assuming layer_count between 3 and 21
+    handle_x_layer = layer_slider_rect.x + int(layer_slider_normalized * layer_slider_rect.width)
+    handle_rect_layer = pygame.Rect(handle_x_layer - 5, layer_slider_rect.y - 5, 10, layer_slider_rect.height + 10)
+    draw_rect(handle_rect_layer, (0.6, 0.6, 0.6))  # Darker gray handle
+    draw_rect_outline(handle_rect_layer, (0.0, 0.0, 0.0))  # Black border
+    draw_text('Layers', layer_slider_rect.left, layer_slider_rect.top - 10, (0, 0, 0), align='left')
 
     # Restore previous matrices
     glEnable(GL_DEPTH_TEST)
@@ -332,16 +341,19 @@ def handle_zoom(delta, ctrl_pressed):
         camera_distance = max(2, camera_distance)  # Prevent camera from getting too close
 
 def resize_viewport(width, height):
-    global viewport, button_rect, input_rect, slider_rect
+    global viewport, button_rect, random_slider_rect, layer_slider_rect, outline_thickness
     viewport = (width, height)
     glViewport(0, 0, width, height)
     # Adjust GUI element positions if needed
     button_rect = pygame.Rect(10, 10, 120, 30)
-    input_rect = pygame.Rect(140, 10, 120, 30)
-    slider_rect = pygame.Rect(270, 20, 200, 10)
+    random_slider_rect = pygame.Rect(10, 50, 200, 20)
+    layer_slider_rect = pygame.Rect(10, 80, 200, 20)
+    # Adjust outline_thickness based on window size (e.g., proportional to height)
+    outline_thickness = max(1, int(height / 300))  # Adjust the divisor to change sensitivity
+    glLineWidth(outline_thickness)
 
 def main():
-    global layer_count, camera_distance, random_intensity
+    global layer_count, camera_distance, random_intensity, layer_slider_value
     init()
     cubes = generate_diamond_structure(layer_count)
     vertex_vbo, vertex_count, edge_vbo, edge_count = create_vbo(cubes)
@@ -349,9 +361,8 @@ def main():
     mouse_down = False
     last_pos = (0, 0)
     randomize = False
-    input_active = False
-    input_text = ''
     slider_active = False
+    layer_slider_active = False
 
     while True:
         ctrl_pressed = pygame.key.get_mods() & KMOD_CTRL
@@ -368,11 +379,24 @@ def main():
                 if event.button == 1:
                     if button_rect.collidepoint(event.pos):
                         randomize = True
-                    elif input_rect.collidepoint(event.pos):
-                        input_active = True
-                        input_text = ''
-                    elif slider_rect.collidepoint(event.pos):
+                    elif random_slider_rect.collidepoint(event.pos):
                         slider_active = True
+                        # Update random_intensity based on mouse position
+                        mouse_x = event.pos[0]
+                        slider_value = (mouse_x - random_slider_rect.x) / random_slider_rect.width
+                        random_intensity = max(0.0, min(1.0, slider_value))
+                    elif layer_slider_rect.collidepoint(event.pos):
+                        layer_slider_active = True
+                        # Update layer_slider_value based on mouse position
+                        mouse_x = event.pos[0]
+                        slider_value = (mouse_x - layer_slider_rect.x) / layer_slider_rect.width
+                        # Assuming layer_count ranges from 3 to 21 and must be odd
+                        raw_value = 3 + int(slider_value * (21 - 3))
+                        # Make sure it's odd and within range
+                        raw_value = max(3, min(21, raw_value))
+                        if raw_value % 2 == 0:
+                            raw_value += 1 if raw_value < 21 else -1
+                        layer_slider_value = raw_value
                     else:
                         mouse_down = True
                         last_pos = event.pos
@@ -383,8 +407,8 @@ def main():
             elif event.type == MOUSEBUTTONUP:
                 if event.button == 1:
                     mouse_down = False
-                    input_active = False
                     slider_active = False
+                    layer_slider_active = False
             elif event.type == MOUSEMOTION:
                 if mouse_down:
                     current_pos = event.pos
@@ -393,39 +417,22 @@ def main():
                     handle_mouse_movement(delta_x, delta_y)
                     last_pos = current_pos
                 elif slider_active:
-                    # Update slider value based on mouse position
+                    # Update randomization intensity based on mouse position
                     mouse_x = event.pos[0]
-                    slider_value = (mouse_x - slider_rect.x) / slider_rect.width
+                    slider_value = (mouse_x - random_slider_rect.x) / random_slider_rect.width
                     random_intensity = max(0.0, min(1.0, slider_value))
+                elif layer_slider_active:
+                    # Update layer slider value based on mouse position
+                    mouse_x = event.pos[0]
+                    slider_value = (mouse_x - layer_slider_rect.x) / layer_slider_rect.width
+                    # Assuming layer_count ranges from 3 to 21 and must be odd
+                    raw_value = 3 + int(slider_value * (21 - 3))
+                    raw_value = max(3, min(21, raw_value))
+                    if raw_value % 2 == 0:
+                        raw_value += 1 if raw_value < 21 else -1
+                    layer_slider_value = raw_value
             elif event.type == KEYDOWN:
-                if input_active:
-                    if event.key == K_RETURN:
-                        try:
-                            new_layer_count = int(input_text)
-                            if new_layer_count >= 3 and new_layer_count % 2 == 1:
-                                layer_count = new_layer_count
-                                camera_distance = layer_count * 4  # Update camera distance
-                                # Regenerate the current structure with the new layer count
-                                if randomize:
-                                    cubes = generate_random_structure(layer_count, random_intensity)
-                                else:
-                                    cubes = generate_diamond_structure(layer_count)
-                                glDeleteBuffers(1, [vertex_vbo])
-                                glDeleteBuffers(1, [edge_vbo])
-                                vertex_vbo, vertex_count, edge_vbo, edge_count = create_vbo(cubes)
-                            else:
-                                print("Please enter an odd number greater than or equal to 3.")
-                        except ValueError:
-                            print("Please enter a valid integer.")
-                        input_text = ''
-                        input_active = False
-                    elif event.key == K_ESCAPE:
-                        input_active = False
-                        input_text = ''
-                    elif event.key == K_BACKSPACE:
-                        input_text = input_text[:-1]
-                    else:
-                        input_text += event.unicode
+                pass  # No longer handling text input
 
         if randomize:
             # Generate a new random structure with the specified intensity
@@ -434,6 +441,19 @@ def main():
             glDeleteBuffers(1, [edge_vbo])
             vertex_vbo, vertex_count, edge_vbo, edge_count = create_vbo(cubes)
             randomize = False
+
+        # Update layer_count if it has changed
+        if layer_slider_value != layer_count:
+            layer_count = layer_slider_value
+            camera_distance = layer_count * 4  # Update camera distance
+            # Regenerate the current structure with the new layer count
+            if randomize:
+                cubes = generate_random_structure(layer_count, random_intensity)
+            else:
+                cubes = generate_diamond_structure(layer_count)
+            glDeleteBuffers(1, [vertex_vbo])
+            glDeleteBuffers(1, [edge_vbo])
+            vertex_vbo, vertex_count, edge_vbo, edge_count = create_vbo(cubes)
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
@@ -460,7 +480,7 @@ def main():
         draw_vbo(vertex_vbo, vertex_count, edge_vbo, edge_count)
 
         # Draw the GUI elements
-        draw_gui(input_text)
+        draw_gui()
 
         pygame.display.flip()
         clock.tick(60)
